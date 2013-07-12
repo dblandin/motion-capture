@@ -14,8 +14,23 @@ class Motion
       add_ouput(still_image_output)
     end
 
+    def stop!
+      session.stopRunning
+
+      remove_outputs
+      remove_inputs
+
+      @_still_image_output = nil
+      @_session = nil
+      @_capture_preview_view = nil
+    end
+
     def capture(&block)
-      still_image_connection = still_image_output.connections.first
+      still_image_connection = still_image_output.connectionWithMediaType(AVMediaTypeVideo)
+
+      if still_image_connection.isVideoOrientationSupported
+        still_image_connection.setVideoOrientation(UIDevice.currentDevice.orientation)
+      end
 
       still_image_output.captureStillImageAsynchronouslyFromConnection(still_image_connection, completionHandler: lambda { |image_data_sample_buffer, error|
         if image_data_sample_buffer
@@ -25,7 +40,7 @@ class Motion
 
           block.call(image)
         else
-          p "Error capturing image: #{error[0].description}"
+          p "Error capturing image: #{error.localizedDescription}"
         end
       })
     end
