@@ -21,8 +21,12 @@ motion_capture.use_camera(:default)
 motion_capture.use_camera(:front)
 motion_capture.use_camera(:rear)
 
-motion_capture.capture do |image|
-  # Use UIImage
+motion_capture.capture do |image_data|
+  # Use NSData
+end
+
+motion_capture.capture_and_save do |asset_url|
+  # Use NSURL
 end
 ```
 

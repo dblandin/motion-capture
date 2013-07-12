@@ -36,13 +36,35 @@ class Motion
         if image_data_sample_buffer
           image_data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(image_data_sample_buffer)
 
-          image = UIImage.alloc.initWithData(image_data)
-
-          block.call(image)
+          block.call(image_data)
         else
           p "Error capturing image: #{error.localizedDescription}"
         end
       })
+    end
+
+    def capture_and_save(&block)
+      still_image_connection = still_image_output.connectionWithMediaType(AVMediaTypeVideo)
+
+      if still_image_connection.isVideoOrientationSupported
+        still_image_connection.setVideoOrientation(UIDevice.currentDevice.orientation)
+      end
+
+      still_image_output.captureStillImageAsynchronouslyFromConnection(still_image_connection, completionHandler: lambda { |image_data_sample_buffer, error|
+        if image_data_sample_buffer
+          image_data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(image_data_sample_buffer)
+
+          assets_library.writeImageDataToSavedPhotosAlbum(image_data, metadata: nil, completionBlock: lambda { |asset_url, error|
+            block.call(asset_url)
+          })
+        else
+          p "Error capturing image: #{error.localizedDescription}"
+        end
+      })
+    end
+
+    def assets_library
+      @_assets_library ||= ALAssetsLibrary.alloc.init
     end
 
     def capture_preview_view(options)
