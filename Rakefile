@@ -6,6 +6,8 @@ require './lib/motion-capture'
 Motion::Project::App.setup do |app|
   app.name = 'motion-capture'
 
+  app.interface_orientations = [:portrait]
+
   app.frameworks += %w(AVFoundation AssetsLibrary)
 
   app.codesign_certificate = ENV['DEVELOPMENT_CERTIFICATE']

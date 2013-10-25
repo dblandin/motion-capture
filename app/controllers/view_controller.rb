@@ -7,10 +7,14 @@ class ViewController < UIViewController
     view.addSubview(flash_control_button)
     view.addSubview(camera_toggle_button)
     view.addSubview(capture_button)
+
+    motion_capture.attach(view)
+
+    motion_capture.start!
   end
 
   def capture(sender)
-    motion_capture.capture do |image|
+    motion_capture.capture_image_and_save do |image, asset_url|
       image_view.image = image
 
       view.addSubview(image_view)
@@ -34,15 +38,14 @@ class ViewController < UIViewController
   end
 
   def capture_preview
-    motion_capture.capture_preview_view(frame: view.bounds)
   end
 
   def motion_capture
-    @_motion_capture ||= Motion::Capture.new(device: :rear)
+    @motion_capture ||= Motion::Capture.new(device: :rear)
   end
 
   def image_view
-    @_image_view ||= UIImageView.alloc.initWithFrame(view.bounds).tap do |image_view|
+    @image_view ||= UIImageView.alloc.initWithFrame(view.bounds).tap do |image_view|
       image_view.contentMode = UIViewContentModeScaleAspectFill
     end
   end
@@ -73,7 +76,7 @@ class ViewController < UIViewController
   end
 
   def reset_button
-    @_reset_button ||= UIButton.buttonWithType(UIButtonTypeCustom).tap do |button|
+    @reset_button ||= UIButton.buttonWithType(UIButtonTypeCustom).tap do |button|
       button.size = CGSizeMake(100, 100)
       button.center = CGPointMake(view.size.width / 2, view.size.height - 100)
       button.setImage(UIImage.imageNamed('capture'), forState: UIControlStateNormal)

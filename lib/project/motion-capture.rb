@@ -1,230 +1,240 @@
-class Motion
-  class Capture
-    DEFAULT_OPTIONS  = { device: :default }
+module Motion; class Capture
+  CAMERA_POSITIONS = { rear: AVCaptureDevicePositionBack, front: AVCaptureDevicePositionFront }
+  FLASH_MODES      = { on: AVCaptureFlashModeOn, off: AVCaptureFlashModeOff, auto: AVCaptureFlashModeAuto }
 
-    attr_accessor :options, :device
+  attr_reader :options, :device
 
-    def initialize(options = {})
-      self.options = options.merge(DEFAULT_OPTIONS)
-    end
+  def initialize(options = {})
+    @options = options
+  end
 
-    def start!
-      use_camera(options[:device])
+  def on_error(block)
+    @error_callback = block
+  end
 
-      add_ouput(still_image_output)
-    end
+  def start!
+    use_camera(options.fetch(:device, :default))
 
-    def stop!
-      session.stopRunning
+    add_ouput(still_image_output)
+  end
 
-      remove_outputs
-      remove_inputs
+  def stop!
+    session.stopRunning
 
-      @_still_image_output = nil
-      @_session = nil
-      @_capture_preview_view = nil
-    end
+    remove_outputs
+    remove_inputs
 
-    def capture(&block)
-      still_image_connection = still_image_output.connectionWithMediaType(AVMediaTypeVideo)
+    @still_image_output   = nil
+    @session              = nil
+    @capture_preview_view = nil
+  end
 
-      if still_image_connection.isVideoOrientationSupported
-        still_image_connection.setVideoOrientation(UIDevice.currentDevice.orientation)
-      end
+  def running?
+    session && session.running?
+  end
 
-      still_image_output.captureStillImageAsynchronouslyFromConnection(still_image_connection, completionHandler: lambda { |image_data_sample_buffer, error|
-        if image_data_sample_buffer
-          image_data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(image_data_sample_buffer)
-
-          block.call(image_data)
-        else
-          p "Error capturing image: #{error.localizedDescription}"
-        end
-      })
-    end
-
-    def capture_and_save(&block)
-      still_image_connection = still_image_output.connectionWithMediaType(AVMediaTypeVideo)
-
-      if still_image_connection.isVideoOrientationSupported
-        still_image_connection.setVideoOrientation(UIDevice.currentDevice.orientation)
-      end
-
-      still_image_output.captureStillImageAsynchronouslyFromConnection(still_image_connection, completionHandler: lambda { |image_data_sample_buffer, error|
-        if image_data_sample_buffer
-          image_data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(image_data_sample_buffer)
-
-          assets_library.writeImageDataToSavedPhotosAlbum(image_data, metadata: nil, completionBlock: lambda { |asset_url, error|
-            block.call(asset_url)
-          })
-        else
-          p "Error capturing image: #{error.localizedDescription}"
-        end
-      })
-    end
-
-    def assets_library
-      @_assets_library ||= ALAssetsLibrary.alloc.init
-    end
-
-    def capture_preview_view(options)
-      @_capture_preview_view ||= begin
-        start!
-
-        UIView.alloc.initWithFrame(options.fetch(:frame, CGRectZero)).tap do |view|
-          view.backgroundColor = UIColor.whiteColor
-
-          view.layer.addSublayer(preview_layer_for_view(view))
-        end
-      end
-    end
-
-    def use_camera(camera)
-      device = camera_devices[camera]
-
-      error = Pointer.new(:object)
-
-      self.device = device
-      input = AVCaptureDeviceInput.deviceInputWithDevice(device, error: error)
-
-      if input
-        set_input(input)
+  def capture(&block)
+    still_image_output.captureStillImageAsynchronouslyFromConnection(still_image_connection, completionHandler: -> (buffer, error) {
+      if error
+        error_callback.call(error)
       else
-        p error[0].description
+        image_data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(buffer)
+
+        block.call(image_data)
       end
+    })
+  end
+
+  def capture_image(&block)
+    capture do |jpeg_data|
+      image = UIImage.imageWithData(jpeg_data)
+
+      block.call(image)
     end
+  end
 
-    def toggle_camera
-      if using_rear_camera?
-        use_camera(:front)
-      else
-        use_camera(:rear)
-      end
-    end
-
-    def toggle_flash
-      if device && device.hasFlash
-        error = Pointer.new(:object)
-        if device.lockForConfiguration(error)
-          if flash_on?
-            turn_flash_off
-          else
-            turn_flash_on
-          end
-
-          device.unlockForConfiguration
-        else
-          p error[0].description
-        end
-      end
-    end
-
-    private
-
-    def set_input(input)
-      remove_inputs
-
-      add_input(input)
-    end
-
-    def set_output(output)
-      remove_outputs
-
-      add_output(output)
-    end
-
-    def remove_inputs
-      session.inputs.each do |input|
-        remove_input(input)
-      end
-    end
-
-    def remove_outputs
-      session.outputs.each do |output|
-        remove_output(output)
-      end
-    end
-
-    def remove_input(input)
-      session.removeInput(input)
-    end
-
-    def remove_output(output)
-      session.removeOutput(output)
-    end
-
-    def add_input(input)
-      session.addInput(input)
-    end
-
-    def add_ouput(output)
-      session.addOutput(output)
-    end
-
-    def default_camera
-      AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeVideo)
-    end
-
-    def rear_camera
-      capture_devices.select { |device| device.position == camera_position_mapping[:rear] }.first
-    end
-
-    def front_camera
-      capture_devices.select { |device| device.position == camera_position_mapping[:front] }.first
-    end
-
-    def using_rear_camera?
-      device.position == AVCaptureDevicePositionBack
-    end
-
-    def camera_position_mapping
-      { rear: AVCaptureDevicePositionBack, front: AVCaptureDevicePositionFront }
-    end
-
-    def camera_devices
-      { default: default_camera, rear: rear_camera, front: front_camera }
-    end
-
-    def capture_devices
-      @_capture_devices ||= AVCaptureDevice.devicesWithMediaType(AVMediaTypeVideo)
-    end
-
-    def preview_layer_for_view(view)
-      AVCaptureVideoPreviewLayer.layerWithSession(session).tap do |layer|
-        layer_bounds = view.layer.bounds
-
-        layer.bounds       = layer_bounds
-        layer.position     = CGPointMake(CGRectGetMidX(layer_bounds), CGRectGetMidY(layer_bounds))
-        layer.videoGravity = AVLayerVideoGravityResizeAspectFill
-      end
-    end
-
-    def flash_on?
-      device.flashMode == AVCaptureFlashModeOn
-    end
-
-    def turn_flash_on
-      device.flashMode = AVCaptureFlashModeOn
-    end
-
-    def turn_flash_off
-      device.flashMode = AVCaptureFlashModeOff
-    end
-
-    def session
-      @_session ||= AVCaptureSession.alloc.init.tap do |session|
-        session.sessionPreset = AVCaptureSessionPresetMedium
-
-        session.startRunning
-      end
-    end
-
-    def still_image_output
-      @_still_image_output ||= AVCaptureStillImageOutput.alloc.init.tap do |output|
-        settings = { 'AVVideoCodeKey' => AVVideoCodecJPEG }
-
-        output.setOutputSettings(settings)
+  def capture_and_save(&block)
+    capture do |jpeg_data|
+      save_data(jpeg_data) do |asset_url|
+        block.call(jpeg_data, asset_url)
       end
     end
   end
-end
+
+  def capture_image_and_save(&block)
+    capture do |jpeg_data|
+      save_data(jpeg_data) do |asset_url|
+        image = UIImage.imageWithData(jpeg_data)
+
+        block.call(image, asset_url)
+      end
+    end
+  end
+
+  def save_data(jpeg_data, &block)
+    assets_library.writeImageDataToSavedPhotosAlbum(jpeg_data, metadata: nil, completionBlock: -> (asset_url, error) {
+      error ? error_callback.call(error) : block.call(asset_url)
+    })
+  end
+
+  def attach(view, options = {})
+    preview_layer = preview_layer_for_view(view, options)
+
+    view.layer.addSublayer(preview_layer)
+  end
+
+  def use_camera(target_camera = :default)
+    @device = camera_devices[target_camera]
+
+    error_pointer = Pointer.new(:object)
+
+    if input = AVCaptureDeviceInput.deviceInputWithDevice(device, error: error_pointer)
+      set_input(input)
+    else
+      error_callback.call(error_pointer[0])
+    end
+  end
+
+  def toggle_camera
+    target_camera = using_rear_camera? ? :front : :rear
+
+    use_camera(target_camera)
+  end
+
+  def toggle_flash
+    if device && device.hasFlash
+      configure_with_lock do
+        target_mode = flash_on? ? :off : :on
+
+        set_flash(target_mode)
+      end
+    end
+  end
+
+  def set_flash(mode = :auto)
+    device.flashMode = FLASH_MODES[mode] if FLASH_MODES.keys.include? mode
+  end
+
+  private
+
+  def error_callback
+    @error_callback ||= -> (error) { p "An error occurred: #{error.localizedDescription}." }
+  end
+
+  def still_image_connection
+    @still_image_connection ||= still_image_output.connectionWithMediaType(AVMediaTypeVideo).tap do |connection|
+      connection.setVideoOrientation(UIDevice.currentDevice.orientation) if connection.videoOrientationSupported?
+    end
+  end
+
+  def assets_library
+    @assets_library ||= ALAssetsLibrary.alloc.init
+  end
+
+  def configure_with_lock(&block)
+    error_pointer = Pointer.new(:object)
+
+    if device.lockForConfiguration(error_pointer)
+      block.call
+
+      device.unlockForConfiguration
+    else
+      error_callback.call(error_pointer[0])
+    end
+  end
+
+  def set_input(input)
+    remove_inputs
+
+    add_input(input)
+  end
+
+  def set_output(output)
+    remove_outputs
+
+    add_output(output)
+  end
+
+  def remove_inputs
+    session.inputs.each do |input|
+      remove_input(input)
+    end
+  end
+
+  def remove_outputs
+    session.outputs.each do |output|
+      remove_output(output)
+    end
+  end
+
+  def remove_input(input)
+    session.removeInput(input)
+  end
+
+  def remove_output(output)
+    session.removeOutput(output)
+  end
+
+  def add_input(input)
+    session.addInput(input)
+  end
+
+  def add_ouput(output)
+    session.addOutput(output)
+  end
+
+  def default_camera
+    AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeVideo)
+  end
+
+  def rear_camera
+    capture_devices.select { |device| device.position == CAMERA_POSITIONS[:rear] }.first
+  end
+
+  def front_camera
+    capture_devices.select { |device| device.position == CAMERA_POSITIONS[:front] }.first
+  end
+
+  def using_rear_camera?
+    device.position == CAMERA_POSITIONS[:rear]
+  end
+
+  def camera_devices
+    { default: default_camera, rear: rear_camera, front: front_camera }
+  end
+
+  def capture_devices
+    @capture_devices ||= AVCaptureDevice.devicesWithMediaType(AVMediaTypeVideo)
+  end
+
+  def preview_layer_for_view(view, options = {})
+    AVCaptureVideoPreviewLayer.layerWithSession(session).tap do |layer|
+      layer_bounds = view.layer.bounds
+
+      layer.bounds       = layer_bounds
+      layer.position     = CGPointMake(CGRectGetMidX(layer_bounds), CGRectGetMidY(layer_bounds))
+      layer.zPosition    = options.fetch(:z_position, -100)
+      layer.videoGravity = options.fetch(:video_gravity, AVLayerVideoGravityResizeAspectFill)
+    end
+  end
+
+  def flash_on?
+    [FLASH_MODES[:on], FLASH_MODES[:auto]].include? device.flashMode
+  end
+
+  def session
+    @session ||= AVCaptureSession.alloc.init.tap do |session|
+      session.sessionPreset = AVCaptureSessionPresetMedium
+
+      session.startRunning
+    end
+  end
+
+  def still_image_output
+    @still_image_output ||= AVCaptureStillImageOutput.alloc.init.tap do |output|
+      settings = { 'AVVideoCodeKey' => AVVideoCodecJPEG }
+
+      output.setOutputSettings(settings)
+    end
+  end
+end; end
