@@ -1,11 +1,11 @@
 # -*- encoding: utf-8 -*-
 Gem::Specification.new do |spec|
   spec.name          = 'motion-capture'
-  spec.version       = '1.0.1'
+  spec.version       = '1.1.1'
   spec.authors       = ['Devon Blandin']
   spec.email         = ['dblandin@gmail.com']
-  spec.description   = %q{AVFoundation wrapper to support custom camera controllers}
-  spec.summary       = %q{AVFoundation wrapper to support custom camera controllers}
+  spec.summary       = %q{RubyMotion AVFoundation wrapper}
+  spec.description   = %q{Easily create custom camera controllers}
   spec.homepage      = 'https://github.com/dblandin/motion-capture'
   spec.license       = 'MIT'
 
