@@ -196,7 +196,7 @@ module Motion; class Capture
   end
 
   def using_rear_camera?
-    device.position == CAMERA_POSITIONS[:rear]
+    device ? device.position == CAMERA_POSITIONS[:rear] : false
   end
 
   def camera_devices
@@ -219,7 +219,7 @@ module Motion; class Capture
   end
 
   def flash_on?
-    [FLASH_MODES[:on], FLASH_MODES[:auto]].include? device.flashMode
+    device ? [FLASH_MODES[:on], FLASH_MODES[:auto]].include?(device.flashMode) : false
   end
 
   def session
