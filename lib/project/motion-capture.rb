@@ -12,8 +12,10 @@ module Motion; class Capture
     @error_callback = block
   end
 
-  def start!
+  def start!(preset = AVCaptureSessionPresetPhoto)
     use_camera(options.fetch(:device, :default))
+
+    set_preset(preset)
 
     add_ouput(still_image_output)
   end
@@ -106,6 +108,12 @@ module Motion; class Capture
       target_mode = flash_on? ? :off : :on
 
       set_flash(target_mode)
+    end
+  end
+
+  def set_preset(preset)
+    if session.canSetSessionPreset(preset)
+      session.sessionPreset = preset
     end
   end
 
