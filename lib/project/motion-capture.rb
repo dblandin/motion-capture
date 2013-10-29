@@ -122,6 +122,14 @@ module Motion; class Capture
     session.sessionPreset = preset if can_set_preset? preset
   end
 
+  def preset
+    session.captureSession if @session
+  end
+
+  def flash
+    device.flashMode if @device
+  end
+
   def set_flash(mode = :auto)
     configure_with_lock do
       device.flashMode = FLASH_MODES[mode] if FLASH_MODES.keys.include? mode
