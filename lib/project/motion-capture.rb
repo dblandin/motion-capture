@@ -2,7 +2,7 @@ module Motion; class Capture
   CAMERA_POSITIONS = { rear: AVCaptureDevicePositionBack, front: AVCaptureDevicePositionFront }
   FLASH_MODES      = { on: AVCaptureFlashModeOn, off: AVCaptureFlashModeOff, auto: AVCaptureFlashModeAuto }
 
-  attr_reader :options, :device
+  attr_reader :options, :device, :preview_layer
 
   def initialize(options = {})
     @options = options
@@ -28,10 +28,11 @@ module Motion; class Capture
     remove_outputs
     remove_inputs
 
-    @still_image_output     = nil
-    @still_image_connection = nil
-    @session                = nil
-    @capture_preview_view   = nil
+    preview_layer.removeFromSuperlayer if preview_layer && preview_layer.superlayer
+
+    @still_image_output = nil
+    @session            = nil
+    @preview_layer      = nil
   end
 
   def running?
@@ -83,7 +84,7 @@ module Motion; class Capture
   end
 
   def attach(view, options = {})
-    preview_layer = preview_layer_for_view(view, options)
+    @preview_layer = preview_layer_for_view(view, options)
 
     view.layer.addSublayer(preview_layer)
   end
@@ -143,7 +144,7 @@ module Motion; class Capture
   end
 
   def still_image_connection
-    @still_image_connection ||= still_image_output.connectionWithMediaType(AVMediaTypeVideo).tap do |connection|
+    still_image_output.connectionWithMediaType(AVMediaTypeVideo).tap do |connection|
       connection.setVideoOrientation(UIDevice.currentDevice.orientation) if connection.videoOrientationSupported?
     end
   end
