@@ -1,7 +1,7 @@
 # -*- encoding: utf-8 -*-
 Gem::Specification.new do |spec|
   spec.name          = 'motion-capture'
-  spec.version       = '1.2.1'
+  spec.version       = '1.2.2'
   spec.authors       = ['Devon Blandin']
   spec.email         = ['dblandin@gmail.com']
   spec.summary       = %q{RubyMotion AVFoundation wrapper}
