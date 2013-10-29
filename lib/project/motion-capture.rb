@@ -18,6 +18,8 @@ module Motion; class Capture
     set_preset(preset)
 
     add_ouput(still_image_output)
+
+    session.startRunning
   end
 
   def stop!
@@ -26,13 +28,14 @@ module Motion; class Capture
     remove_outputs
     remove_inputs
 
-    @still_image_output   = nil
-    @session              = nil
-    @capture_preview_view = nil
+    @still_image_output     = nil
+    @still_image_connection = nil
+    @session                = nil
+    @capture_preview_view   = nil
   end
 
   def running?
-    session && session.running?
+    @session && session.running?
   end
 
   def capture(&block)
@@ -111,10 +114,12 @@ module Motion; class Capture
     end
   end
 
+  def can_set_preset?(preset)
+    session.canSetSessionPreset(preset)
+  end
+
   def set_preset(preset)
-    if session.canSetSessionPreset(preset)
-      session.sessionPreset = preset
-    end
+    session.sessionPreset = preset if can_set_preset? preset
   end
 
   def set_flash(mode = :auto)
@@ -184,11 +189,11 @@ module Motion; class Capture
   end
 
   def add_input(input)
-    session.addInput(input)
+    session.addInput(input) if session.canAddInput(input)
   end
 
   def add_ouput(output)
-    session.addOutput(output)
+    session.addOutput(output) if session.canAddOutput(output)
   end
 
   def default_camera
@@ -231,11 +236,7 @@ module Motion; class Capture
   end
 
   def session
-    @session ||= AVCaptureSession.alloc.init.tap do |session|
-      session.sessionPreset = AVCaptureSessionPresetMedium
-
-      session.startRunning
-    end
+    @session ||= AVCaptureSession.alloc.init
   end
 
   def still_image_output
