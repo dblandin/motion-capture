@@ -132,9 +132,11 @@ module Motion; class Capture
   end
 
   def set_flash(mode = :auto)
-    configure_with_lock do
-      device.flashMode = FLASH_MODES[mode] if FLASH_MODES.keys.include? mode
-    end
+    configure_with_lock { device.flashMode = FLASH_MODES[mode] } if flash_mode_available(mode)
+  end
+
+  def flash_mode_available?(mode)
+    FLASH_MODES.keys.include?(mode) && device.isFlashModeSupported(FLASH_MODES[mode])
   end
 
   private
