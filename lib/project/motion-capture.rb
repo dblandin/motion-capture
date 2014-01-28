@@ -147,8 +147,18 @@ module Motion; class Capture
 
   def still_image_connection
     still_image_output.connectionWithMediaType(AVMediaTypeVideo).tap do |connection|
-      connection.setVideoOrientation(UIDevice.currentDevice.orientation) if connection.videoOrientationSupported?
+      device_orientation = UIDevice.currentDevice.orientation
+      video_orientation  = orientation_mapping.fetch(device_orientation, AVCaptureVideoOrientationPortrait)
+
+      connection.setVideoOrientation(video_orientation) if connection.videoOrientationSupported?
     end
+  end
+
+  def orientation_mapping
+    { UIDeviceOrientationPortrait           => AVCaptureVideoOrientationPortrait,
+      UIDeviceOrientationPortraitUpsideDown => AVCaptureVideoOrientationPortraitUpsideDown,
+      UIDeviceOrientationLandscapeRight     => AVCaptureVideoOrientationLandscapeRight,
+      UIDeviceOrientationLandscapeLeft      => AVCaptureVideoOrientationLandscapeLeft }
   end
 
   def assets_library
