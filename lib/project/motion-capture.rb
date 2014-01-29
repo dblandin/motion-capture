@@ -157,8 +157,8 @@ module Motion; class Capture
   def orientation_mapping
     { UIDeviceOrientationPortrait           => AVCaptureVideoOrientationPortrait,
       UIDeviceOrientationPortraitUpsideDown => AVCaptureVideoOrientationPortraitUpsideDown,
-      UIDeviceOrientationLandscapeRight     => AVCaptureVideoOrientationLandscapeRight,
-      UIDeviceOrientationLandscapeLeft      => AVCaptureVideoOrientationLandscapeLeft }
+      UIDeviceOrientationLandscapeRight     => AVCaptureVideoOrientationLandscapeLeft,
+      UIDeviceOrientationLandscapeLeft      => AVCaptureVideoOrientationLandscapeRight }
   end
 
   def assets_library
