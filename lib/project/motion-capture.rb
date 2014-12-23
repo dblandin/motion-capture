@@ -243,7 +243,7 @@ module Motion; class Capture
 
   def preview_layer_for_view(view, options = {})
     AVCaptureVideoPreviewLayer.layerWithSession(session).tap do |layer|
-      layer_bounds = view.layer.bounds
+      layer_bounds = CGRectMake(0, 0, App.window.frame.size.width, App.window.frame.size.height)
 
       layer.bounds       = layer_bounds
       layer.position     = CGPointMake(CGRectGetMidX(layer_bounds), CGRectGetMidY(layer_bounds))
