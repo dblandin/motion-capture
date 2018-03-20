@@ -2,8 +2,6 @@ class ViewController < UIViewController
   def viewDidLoad
     super
 
-    view.addSubview(capture_preview)
-
     view.addSubview(flash_control_button)
     view.addSubview(camera_toggle_button)
     view.addSubview(capture_button)
@@ -35,9 +33,6 @@ class ViewController < UIViewController
     sender.selected = !sender.isSelected
 
     motion_capture.toggle_flash
-  end
-
-  def capture_preview
   end
 
   def motion_capture

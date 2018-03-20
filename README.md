@@ -7,9 +7,9 @@ Camera support for custom camera controllers
 ``` ruby
 motion_capture = Motion::Capture.new
 motion_capture = Motion::Capture.new(device: :front) # specify camera
+motion_capture = Motion::Capture.new(preset: AVCaptureSessionPreset640x480) # specify a different preset (defaults to high resolution photo)
 
-preview = motion_capture.capture_preview_view(frame: view.bounds)
-view.addSubview(preview) # UIView containing AVCaptureVideoPreviewLayer
+motion_capture.attach(view) # apply a AVCaptureVideoPreviewLayer to the specified view
 
 motion_capture.toggle_camera # Switch between front/rear cameras
 motion_capture.toggle_flash  # Switch bettwen flash on/off
@@ -21,14 +21,33 @@ motion_capture.use_camera(:default)
 motion_capture.use_camera(:front)
 motion_capture.use_camera(:rear)
 
+# When you're ready to start the capture session:
+motion_capture.start!
+
+# Capturing Single Photos
+
 motion_capture.capture do |image_data|
   # Use NSData
 end
 
-motion_capture.capture_and_save do |asset_url|
-  # Use NSURL
+motion_capture.capture_image do |image|
+  # Use UIImage
 end
+
+# Saving captured images to the Photos library
+
+motion_capture.capture_and_save do |image_data, asset_url|
+  # Use NSData and NSURL
+end
+
+motion_capture.capture_image_and_save do |image, asset_url|
+  # Use UIImage and NSURL
+end
+
+# When you're done using the camera and are ready to stop the capture session:
+motion_capture.stop!
 ```
+
 
 ## Setup
 
@@ -43,6 +62,20 @@ And then execute:
 Or install it yourself as:
 
     $ gem install motion-capture
+
+Add the necessary frameworks to your app configuration in your Rakefile:
+
+    app.frameworks << 'AVFoundation'
+    app.frameworks << 'Photos' # if you will be saving to the Photo library and targeting iOS 8+
+    app.frameworks << 'AssetsLibrary' # if you will be targeting iOS 4-7
+
+Then update your app configuration in your Rakefile to specify the message that will be displayed when asking the user for permission to use the camera:
+
+    app.info_plist['NSCameraUsageDescription'] = 'Camera will be used for taking your profile photo.'
+
+If you will be saving photos to the Photo Library, you will also need to specify the message that will be displayed to the user:
+
+    app.info_plist['NSPhotoLibraryUsageDescription'] = 'Photos taken will be saved to your library.'
 
 ## Contributing
 
