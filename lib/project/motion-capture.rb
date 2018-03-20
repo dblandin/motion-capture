@@ -8,18 +8,55 @@ module Motion; class Capture
     @options = options
   end
 
-  def on_error(block)
+  def on_error(&block)
     @error_callback = block
   end
 
-  def start!(preset = AVCaptureSessionPresetPhoto)
+  def start!
+    return if session.running?
+    if defined?(AVCapturePhotoOutput) # iOS 10+
+      @starting = true
+      authorize_camera do |success|
+        if success
+          Dispatch::Queue.new('motion-capture').async do
+            configure_session
+            session.startRunning
+            @starting = false
+          end
+        else
+          @starting = false
+        end
+      end
+    else # iOS 4-9
+      configure_session
+      session.startRunning
+    end
+  end
+
+  def authorize_camera(&block)
+    AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo, completionHandler: -> (success) {
+      block.call(success)
+    })
+  end
+
+  def configure_session
+    session.beginConfiguration
+
+    set_preset(options.fetch(:preset, AVCaptureSessionPresetPhoto))
+
     use_camera(options.fetch(:device, :default))
 
-    set_preset(preset)
+    if defined?(AVCapturePhotoOutput) # iOS 10+
+      add_output(photo_output)
+    else # iOS 4-9
+      add_output(still_image_output)
+    end
 
-    add_ouput(still_image_output)
+    session.commitConfiguration
+  end
 
-    session.startRunning
+  def running?
+    @session && session.running?
   end
 
   def stop!
@@ -31,30 +68,66 @@ module Motion; class Capture
     preview_layer.removeFromSuperlayer if preview_layer && preview_layer.superlayer
 
     @still_image_output = nil
+    @photo_output       = nil
     @session            = nil
     @preview_layer      = nil
   end
 
-  def running?
-    @session && session.running?
+  def capture(&block)
+    if defined?(AVCapturePhotoOutput) # iOS 10+
+      Dispatch::Queue.new('motion-capture').async do
+        ensure_running_session do
+          update_video_orientation!
+          @capture_callback = block
+          capture_settings = AVCapturePhotoSettings.photoSettingsWithFormat(AVVideoCodecKey => AVVideoCodecJPEG)
+          photo_output.capturePhotoWithSettings(capture_settings, delegate: self)
+        end
+      end
+    else # iOS 4-9
+      still_image_output.captureStillImageAsynchronouslyFromConnection(still_image_connection, completionHandler: -> (buffer, error) {
+        if error
+          error_callback.call(error)
+        else
+          image_data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(buffer)
+          block.call(image_data)
+        end
+      })
+    end
   end
 
-  def capture(&block)
-    still_image_output.captureStillImageAsynchronouslyFromConnection(still_image_connection, completionHandler: -> (buffer, error) {
-      if error
-        error_callback.call(error)
-      else
-        image_data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(buffer)
+  def ensure_running_session(&block)
+    start! unless @starting || session.running?
+    while @starting || !session.running?
+      # wait for session to start...
+    end
+    block.call
+  end
 
-        block.call(image_data)
-      end
-    })
+  # iOS 11+ AVCapturePhotoCaptureDelegate method
+  def captureOutput(output, didFinishProcessingPhoto: photo, error: error)
+    if error
+      error_callback.call(error)
+    else
+      @capture_callback.call(photo.fileDataRepresentation)
+    end
+  end
+
+  # iOS 10 AVCapturePhotoCaptureDelegate method
+  def captureOutput(output, didFinishProcessingPhotoSampleBuffer: photo_sample_buffer, previewPhotoSampleBuffer: preview_photo_sample_buffer, resolvedSettings: resolved_settings, bracketSettings: bracket_settings, error: error)
+    if error
+      error_callback.call(error)
+    else
+      jpeg_data = AVCapturePhotoOutput.jpegPhotoDataRepresentation(
+        forJPEGSampleBuffer: photo_sample_buffer,
+        previewPhotoSampleBuffer: preview_photo_sample_buffer
+      )
+      @capture_callback.call(jpeg_data)
+    end
   end
 
   def capture_image(&block)
     capture do |jpeg_data|
       image = UIImage.imageWithData(jpeg_data)
-
       block.call(image)
     end
   end
@@ -71,15 +144,37 @@ module Motion; class Capture
     capture do |jpeg_data|
       save_data(jpeg_data) do |asset_url|
         image = UIImage.imageWithData(jpeg_data)
-
         block.call(image, asset_url)
       end
     end
   end
 
   def save_data(jpeg_data, &block)
+    if defined?(PHPhotoLibrary) # iOS 8+
+      save_to_photo_library(jpeg_data, &block)
+    else # iOS 4-8
+      save_to_assets_library(jpeg_data, &block)
+    end
+  end
+
+  # iOS 4-8
+  def save_to_assets_library(jpeg_data, &block)
     assets_library.writeImageDataToSavedPhotosAlbum(jpeg_data, metadata: nil, completionBlock: -> (asset_url, error) {
       error ? error_callback.call(error) : block.call(asset_url)
+    })
+  end
+
+  # iOS 8+
+  def save_to_photo_library(jpeg_data, &block)
+    photo_library.performChanges(-> {
+      image = UIImage.imageWithData(jpeg_data)
+      PHAssetChangeRequest.creationRequestForAssetFromImage(image)
+    }, completionHandler: -> (success, error) {
+      if error
+        error_callback.call(error)
+      else
+        block.call(nil) # asset url is not returned in completion block
+      end
     })
   end
 
@@ -124,13 +219,14 @@ module Motion; class Capture
   end
 
   def preset
-    session.captureSession if @session
+    session.sessionPreset if @session
   end
 
   def flash
     device.flashMode if @device
   end
 
+  # iOS 4-9
   def set_flash(mode = :auto)
     configure_with_lock { device.flashMode = FLASH_MODES[mode] } if flash_mode_available?(mode)
   end
@@ -145,8 +241,19 @@ module Motion; class Capture
     @error_callback ||= -> (error) { p "An error occurred: #{error.localizedDescription}." }
   end
 
+  # iOS 4-9
   def still_image_connection
     still_image_output.connectionWithMediaType(AVMediaTypeVideo).tap do |connection|
+      device_orientation = UIDevice.currentDevice.orientation
+      video_orientation  = orientation_mapping.fetch(device_orientation, AVCaptureVideoOrientationPortrait)
+
+      connection.setVideoOrientation(video_orientation) if connection.videoOrientationSupported?
+    end
+  end
+
+  # iOS 10+
+  def update_video_orientation!
+    photo_output.connectionWithMediaType(AVMediaTypeVideo).tap do |connection|
       device_orientation = UIDevice.currentDevice.orientation
       video_orientation  = orientation_mapping.fetch(device_orientation, AVCaptureVideoOrientationPortrait)
 
@@ -161,8 +268,14 @@ module Motion; class Capture
       UIDeviceOrientationLandscapeLeft      => AVCaptureVideoOrientationLandscapeRight }
   end
 
+  # iOS 4-8
   def assets_library
     @assets_library ||= ALAssetsLibrary.alloc.init
+  end
+
+  # iOS 8+
+  def photo_library
+    @photo_library ||= PHPhotoLibrary.sharedPhotoLibrary
   end
 
   def configure_with_lock(&block)
@@ -213,7 +326,7 @@ module Motion; class Capture
     session.addInput(input) if session.canAddInput(input)
   end
 
-  def add_ouput(output)
+  def add_output(output)
     session.addOutput(output) if session.canAddOutput(output)
   end
 
@@ -260,11 +373,16 @@ module Motion; class Capture
     @session ||= AVCaptureSession.alloc.init
   end
 
+  # iOS 4-9
   def still_image_output
     @still_image_output ||= AVCaptureStillImageOutput.alloc.init.tap do |output|
-      settings = { 'AVVideoCodeKey' => AVVideoCodecJPEG }
-
+      settings = { 'AVVideoCodecKey' => AVVideoCodecJPEG }
       output.setOutputSettings(settings)
     end
+  end
+
+  # iOS 10+
+  def photo_output
+    @photo_output ||= AVCapturePhotoOutput.alloc.init
   end
 end; end
